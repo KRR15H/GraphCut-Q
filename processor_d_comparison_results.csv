@@ -1,0 +1,3 @@
+qubits,depth,cx_count,swap_count_remaining,single_qubit_count,processor,physical_qubits_available,logical_qubits_required,coupling_edges,extra_cx_vs_unconstrained
+9,51,35,0,58,Processor B,9,6,8,15
+6,29,20,0,58,Processor D,6,6,15,0

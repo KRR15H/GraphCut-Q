@@ -1,0 +1,2 @@
+qubits,depth,cx_count,swap_count,single_qubit_count,extra_cx_vs_logical,processor,physical_qubits_available,logical_qubits_required,coupling_edges
+9,51,35,0,58,15,Processor B,9,6,8
