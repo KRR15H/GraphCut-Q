@@ -277,7 +277,7 @@ hardware changes the answer.
 ## Contributors
 
 - **Krrish Raj Kannojia** — Project implementation, QAOA and classical solver, benchmarking, and integration.
-- **Siddhi Kapoor** — [Describe her actual contribution, such as research, testing, documentation, or presentation preparation.]
+- **Siddhi Kapoor** — Research and Study, Helping hand in Implimentation and integration, Documentation
 
 Built collaboratively for the Qiskit Fall Fest 2026 Quantum Optimization challenge.
 
