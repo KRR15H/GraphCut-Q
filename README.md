@@ -241,27 +241,7 @@ these commands in a final demo.
     tractable benchmark intended to study QAOA behavior and
     hardware-resource trade-offs.
 
-## Before submission
-
--   [ ] Confirm the official graph, edge weights, processor topologies,
-    and scoring criteria.
--   [ ] Keep one approved graph fixed across Processor A, B, and D
-    comparisons.
--   [ ] Include a graph visualization with edge weights and Processor
-    A/B/D coupling diagrams.
--   [ ] Provide the requested notebook, QUBO / cost-Hamiltonian
-    formulation, and QAOA circuit.
--   [ ] Report the exact classical optimum, best quantum cut,
-    approximation ratio, and optimal-bitstring probability.
--   [ ] Report CX count, depth, and routing / SWAP overhead for each
-    feasible architecture.
--   [ ] Add plots for solution quality versus depth/noise and
-    architecture resource costs.
--   [ ] Verify that a clean install can run the chosen demo end-to-end.
--   [ ] Attach a concise technical report describing methods, results,
-    limitations, and the Processor D proposal/design.
--   [ ] Check every claim and number against freshly generated output
-    files.
+---------------------------------------------------------------------
 
 ## Why GraphCut-Q?
 
