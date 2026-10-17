@@ -249,7 +249,7 @@ Results may vary if seeds, software versions, optimizer settings, or compilation
 ## Team
 
 - **Krrish Raj Kannojia** — project implementation, QAOA and classical-solver integration, benchmarking, and experimental analysis.
-- **Siddhi Kapoor** — project collaboration and contributions as reflected in the repository history.
+- **Siddhi Kapoor** — DOCUMENTATION , Research and Study, Helping hand in implementation and project integration
 
 ## Acknowledgements
 
