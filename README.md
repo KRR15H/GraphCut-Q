@@ -1,286 +1,260 @@
 # GraphCut-Q
+### Hardware-aware QAOA for Weighted Max-Cut
 
-**A hardware-aware QAOA study for weighted Max-Cut**
+GraphCut-Q studies how the **Quantum Approximate Optimization Algorithm (QAOA)** can solve a weighted Max-Cut problem and how circuit connectivity, compilation, and noise influence the result.
 
-*Qiskit Fall Fest 2026 · Quantum Optimization · QAOA / Max-Cut*
+The project combines an exact classical baseline with a parameterized quantum circuit, then evaluates that circuit under different simulated processor architectures. The aim is to find high-quality cuts while measuring the practical cost of mapping the same optimization problem to different hardware layouts.
 
-------------------------------------------------------------------------
+> **Scope:** Processor B and Processor D results are simulation-based. Processor D is a proposed custom topology used for architecture comparison, not a physical quantum processor.
 
-## The idea
+## At a glance
 
-Quantum optimization is not just about finding a good answer. The
-circuit must also survive the realities of hardware: limited
-connectivity, extra two-qubit gates, finite shots, and noise.
+| Item | Value |
+|---|---|
+| Problem | Weighted Max-Cut |
+| Graph | 6 vertices, 10 weighted edges |
+| Edge weights | Integers from 1 to 5 |
+| Exact classical optimum | **27** |
+| Quantum method | QAOA |
+| Main tools | Python, Qiskit |
+| Evaluation | Classical baseline, QAOA, depth study, architecture and noise benchmarks |
 
-**GraphCut-Q** studies that trade-off using the Quantum Approximate
-Optimization Algorithm (QAOA) on a six-vertex weighted Max-Cut instance.
-It combines an exact classical reference, variational parameter
-optimization, hardware-aware transpilation, and repeated
-noisy-simulation experiments.
+## Why this project?
 
-The central question is:
+A circuit can be mathematically correct and still be expensive to execute on a particular device. Limited connectivity can introduce routing operations, while gate and readout noise can change the measured output distribution.
 
-> **When a deeper QAOA circuit improves the ideal solution, does that
-> improvement survive hardware connectivity and noise?**
+GraphCut-Q investigates this gap between an optimization model and its hardware-aware implementation:
 
-## What this project does
+- Formulate weighted Max-Cut as a binary objective and cost Hamiltonian.
+- Build a QAOA circuit and optimize its parameters with a classical optimizer.
+- Compare QAOA results with an exact classical solution.
+- Transpile the same logical problem for different connectivity assumptions.
+- Measure circuit depth and two-qubit gate counts.
+- Compare ideal and noisy simulation results across repeated runs.
+- Study the quality-versus-cost trade-off as QAOA depth increases.
 
--   **Builds a classical reference:** exhaustively evaluates all (2\^6
-    = 64) assignments to find the exact optimum for the development
-    graph.
--   **Encodes Max-Cut for QAOA:** represents weighted edges with
-    cost-Hamiltonian interactions and applies alternating cost and mixer
-    layers.
--   **Optimizes variational parameters:** uses a classical COBYLA
-    optimizer with multiple random restarts.
--   **Compiles for a target architecture:** transpiles to the native
-    basis `rz`, `sx`, `x`, and `cx`, using a fixed transpiler seed.
--   **Models device noise:** includes depolarizing gate noise and
-    symmetric readout bit-flips.
--   **Runs holdout validation:** freezes optimized parameters before
-    evaluating 30 separate simulator seeds, with 4,096 shots per seed.
--   **Measures the trade-off:** records expected cut weight,
-    approximation ratio, optimal-bitstring frequency, circuit depth, and
-    CX count.
+## Problem formulation
 
-## Headline result
+Given a weighted undirected graph \(G=(V,E)\), assign each vertex to one of two sets. An edge contributes its weight when its endpoints are assigned to different sets.
 
-For the current **development graph** and the configured Processor B
-noise model, the strongest experiment found that depth (p=3) achieved
-the highest noisy mean cut weight among the three tested depths.
+Let \(x_i\in\{0,1\}\) represent the set assignment of vertex \(i\). The objective is to maximize
 
-  -----------------------------------------------------------------------------------
-   QAOA depth    Ideal mean    Noisy mean    CX gates    Compiled               Noisy
-                        cut           cut                   depth   optimal-bitstring
-                                                                            frequency
-  ----------- ------------- ------------- ----------- ----------- -------------------
-        p = 1       20.7339       20.0916          35          52             16.495%
+\[
+C(x)=\sum_{(i,j)\in E} w_{ij}\,[x_i+x_j-2x_ix_j].
+\]
 
-        p = 2       21.2279       19.8222          71          87             16.793%
+For this instance, the graph has six vertices and ten weighted edges. The classical solver checks all \(2^6=64\) assignments and finds a maximum cut weight of **27**. One optimal bitstring is `010110`; its complement `101001` represents the same cut with the two partitions swapped.
 
-    **p = 3**   **23.4207**   **20.5567**         120         151         **26.257%**
-  -----------------------------------------------------------------------------------
+### QUBO and cost Hamiltonian
 
-**How to read this:** p=3 produced the best observed noisy mean and
-optimal-bitstring frequency in this experiment, but it also required
-substantially more CX gates and circuit depth. This is evidence of a
-quality--resource trade-off on this graph and noise model---not proof of
-quantum advantage or a hardware result.
+The equivalent QUBO can be expressed as minimization of the negative cut weight:
 
-The table reports the 30-seed holdout experiment. Values are
-experiment-specific; rerun the scripts to reproduce them in your
-environment.
+\[
+Q(x)=-\sum_{(i,j)\in E}w_{ij}(x_i+x_j-2x_ix_j).
+\]
 
-## Architecture matters
+Using \(x_i=(1-Z_i)/2\), the Max-Cut cost Hamiltonian is
 
-The project models Processor B as a sparse nine-qubit coupling graph and
-compiles the six-qubit logical circuit to its native gate basis. In an
-earlier compilation benchmark, the Processor B circuit required **35 CX
-gates at depth 51--52**, compared with **20 CX gates at depth 29** for
-the unconstrained logical baseline. Routing overhead can appear as
-additional CX gates even when the final transpiled circuit reports zero
-explicit SWAP instructions.
+\[
+H_C=\sum_{(i,j)\in E}\frac{w_{ij}}{2}(I-Z_iZ_j).
+\]
 
-Processor A has only five qubits, so it **cannot directly host this
-six-qubit logical instance** without changing the encoding or reducing
-the problem. Treat Processor A as a capacity/routing reference unless an
-approved qubit-reduction method is implemented.
+The cost Hamiltonian defines the QAOA cost layer. Cost and mixer layers are repeated according to depth \(p\), while a classical optimizer searches for useful angle parameters.
 
-## Experimental setup
+## Method
 
-The current benchmark configuration uses:
+1. **Exact baseline:** enumerate every bitstring for the six-vertex graph and record the best cut.
+2. **QAOA construction:** encode the cost Hamiltonian and build a parameterized circuit.
+3. **Parameter optimization:** use a classical optimizer to search over the QAOA angles.
+4. **Sampling and validation:** evaluate sampled bitstrings, expected cut value, and optimal-cut probability.
+5. **Compilation and architecture study:** transpile the logical circuit for the specified coupling maps and compare resource counts.
+6. **Noise experiments:** compare ideal and noisy simulations, including repeated-seed and noise-sensitivity studies.
 
--   **Problem:** six vertices, integer-weighted edges
--   **Classical reference:** exhaustive search over 64 bitstrings
--   **QAOA depths:** p = 1, 2, 3 for the depth study
--   **Optimizer:** COBYLA, with multiple random initializations
--   **Native basis:** `rz`, `sx`, `x`, `cx`
--   **Transpilation:** optimization level 1, transpiler seed 42
--   **Noise:** single-qubit depolarizing probability 0.001; CX
-    depolarizing probability 0.005; symmetric readout bit-flip
-    probability 0.01
--   **Sampling:** 4,096 shots per simulator run
--   **Holdout validation:** 30 seeds per depth in the strongest
-    benchmark
+## Results
 
-These are simulator experiments using a configured noise model, not
-measurements from a physical quantum processor.
+### Core QAOA run
 
-## Repository map
+| Metric | Result |
+|---|---:|
+| Exact classical optimum | 27 |
+| QAOA expected cut, \(p=1\) | 16.9644 |
+| Approximation ratio | 0.6283 |
+| Optimizer | COBYLA |
+| Optimizer status | Returned successfully |
 
-The project has been developed as a collection of focused scripts and
-CSV outputs:
+The approximation ratio is
 
-  -----------------------------------------------------------------------
-  File                                Purpose
-  ----------------------------------- -----------------------------------
-  `classical_solver.py`               Classical Max-Cut reference and
-                                      exact optimum
+\[
+r=\frac{\mathbb{E}[C_{\mathrm{QAOA}}]}{C_{\mathrm{optimal}}}.
+\]
 
-  `qaoa_solver.py`                    QAOA circuit, cut-weight
-                                      evaluation, and parameter
-                                      optimization
+For this run, \(r=16.9644/27\approx0.6283\). This is an expected objective value, not a claim that every sample reaches that value. An optimal bitstring was observed during sampling.
 
-  `measurement_simulator.py`          Measurement / bitstring sampling
-                                      utilities
+### QAOA depth study
 
-  `processor_benchmark.py`            Architecture-aware transpilation
-                                      comparison
+A separate benchmark investigated the trade-off between solution quality and circuit cost.
 
-  `noise_benchmark.py`                Single-run ideal-versus-noisy
-                                      comparison
+| Depth | Ideal expected cut | Noisy holdout mean cut | Optimal-cut probability | CX gates | Recorded circuit depth* |
+|---:|---:|---:|---:|---:|---:|
+| \(p=1\) | 20.7574 | 20.0916 | 16.495% | 35 | 52 |
+| \(p=2\) | 21.2585 | 19.8222 | 16.793% | 71 | 87 |
+| \(p=3\) | 23.4337 | 20.5567 | 26.257% | 120 | 151 |
 
-  `repeated_benchmark.py`             Repeated-seed noise benchmark
+These values come from the depth-comparison experiment and are **not** the same run as the core \(p=1\) result above. Interpret them within that experiment's evaluation setup.
 
-  `noise_sensitivity.py`              Noise-level sensitivity experiment
+\*Recorded depth values may include measurement operations. For gate-cost comparisons, report depth with measurements excluded when the benchmark specification requires it.
 
-  `qaoa_depth_benchmark.py`           QAOA depth comparison
+The depth study illustrates a practical trade-off: deeper circuits can improve ideal objective values, but require more two-qubit gates and greater depth, increasing exposure to noise.
 
-  `qaoa_tradeoff.py`                  Exploratory quality-versus-CX
-                                      scoring
+### Processor architecture comparison
 
-  `qaoa_validation.py`                Fixed-parameter validation across
-                                      seeds
+The same six-qubit logical problem was compared on two simulated connectivity models.
 
-  `qaoa_strong_benchmark.py`          Multi-restart optimization and
-                                      holdout evaluation
+| Metric | Processor B | Processor D |
+|---|---:|---:|
+| Logical qubits | 6 | 6 |
+| Connectivity | Sparse, 9-qubit heavy-hex-inspired graph | Fully connected, 6-qubit custom topology |
+| Compiled CX gates | 35 | 20 |
+| Recorded compiled depth | 52 | 30 |
+| Mean noisy cut (10-seed comparison) | 16.7542 | 16.8471 |
+| 95% confidence interval for mean cut | 16.7077–16.8006 | 16.8187–16.8755 |
+| Optimal-cut probability | 2.073% | 2.141% |
 
-  `processor_benchmark_results.csv`   Architecture benchmark results
+For this comparison, the Processor D model uses **15 fewer CX gates**, a reduction of approximately **42.9%** relative to Processor B. The recorded depth is also lower. The ten-seed noisy comparison shows a small difference in mean cut value; it is not sufficient by itself to establish statistical significance.
 
-  `repeated_benchmark_results.csv`    Repeated-seed results
+**Interpretation:** The custom topology reduces routing pressure for this instance in simulation. This is a topology-dependent resource comparison, not a claim about the performance of a real device. Depth and gate counts should be compared using the same counting convention, ideally excluding measurements from gate-cost metrics.
 
-  `noise_sensitivity_results.csv`     Noise-sweep results
+### Noise sensitivity
 
-  `qaoa_depth_results.csv`            Depth experiment results
+The noise experiments compare ideal execution with simulated noise at several strengths and repeat runs across seeds. The analysis tracks mean cut value, optimal-cut probability, changes in the measured objective as noise strength increases, and variation across independent seeds.
 
-  `qaoa_tradeoff_results.csv`         Exploratory trade-off results
+Noise results are empirical estimates from finite-shot simulations. Interpret them alongside the shot count, seed count, and confidence intervals rather than as exact hardware predictions.
 
-  `qaoa_validation_results.csv`       Fixed-parameter validation results
+## Hardware model and assumptions
 
-  `qaoa_strong_seed_results.csv`      Seed-level strong-benchmark results
+The processor experiments use explicit coupling maps rather than assuming every pair of qubits can interact directly.
 
-  `qaoa_strong_summary.csv`           Strong-benchmark summary
+- **Processor B:** nine physical-qubit positions with sparse connectivity; the logical circuit is transpiled to the specified topology.
+- **Processor D:** a proposed six-qubit fully connected topology used to study how connectivity changes compilation cost.
+- **Processor A:** a five-qubit nearest-neighbour chain. It cannot hold the full six-logical-qubit instance simultaneously, so it is treated as a capacity/routing reference rather than dropping a problem variable.
+- **Noise model:** the configured simulation experiments use single-qubit depolarizing error, two-qubit depolarizing error, and readout bit-flip error. Check each benchmark script for the exact configuration used in that experiment.
 
-  `qaoa_strong_metadata.json`         Strong-benchmark configuration /
-                                      metadata
+Processor D is a **simulated architecture proposal**, not an IBM device or a claim of physical execution. Architecture comparisons are meaningful only when graph instance, logical circuit, transpilation settings, shot count, noise assumptions, and metric definitions are consistent.
 
-  `qaoa_strong_parameters.npz`        Frozen parameters selected by the
-                                      strong benchmark
-  -----------------------------------------------------------------------
+## Repository structure
 
-File names reflect the current development layout; if your local folder
-differs, update this map before submitting.
+```text
+GraphCut-Q/
+├── classical_solver.py              # Exact classical Max-Cut baseline
+├── qaoa_solver.py                   # QAOA implementation and optimization
+├── GraphCutQ_walkthrough.ipynb      # End-to-end walkthrough
+├── qaoa_validation.py               # Fixed-parameter validation
+├── qaoa_depth_benchmark.py           # QAOA depth comparison
+├── qaoa_strong_benchmark.py          # Repeated/stronger benchmark runs
+├── processor_benchmark.py           # Processor B compilation/resource study
+├── processor_d_benchmark.py          # Custom Processor D study
+├── processor_noise_comparison.py     # B/D noisy comparison
+├── noise_benchmark.py                # Ideal/noisy execution comparison
+├── noise_sensitivity.py              # Noise-strength sensitivity
+├── qaoa_tradeoff.py                  # Quality/resource trade-off analysis
+├── requirements.txt                  # Python dependencies
+├── technical_report.md               # Extended technical report
+└── figures/                          # Generated plots, if present
+```
 
-## Run it locally
+The repository also includes CSV/JSON benchmark outputs, saved parameter files, and other experiment artifacts. The exact set of generated files may evolve as experiments are rerun.
 
-Use Python 3.10+ and a virtual environment. Install the dependencies
-used by your scripts (at minimum Qiskit, Qiskit Aer, NumPy, and SciPy;
-add any plotting or visualization libraries your local code imports).
+## Getting started
 
-### Windows PowerShell
+### 1. Clone the repository
 
-``` powershell
-# From the GraphCut-Q project folder
+```bash
+git clone https://github.com/KRR15H/GraphCut-Q.git
+cd GraphCut-Q
+```
+
+### 2. Create and activate a virtual environment
+
+**Windows PowerShell**
+
+```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
+```
 
+**macOS / Linux**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
 python -m pip install --upgrade pip
-python -m pip install qiskit qiskit-aer numpy scipy
+pip install -r requirements.txt
 ```
 
-Run an individual experiment:
+### 4. Run the baseline and QAOA solver
 
-``` powershell
+```bash
 python classical_solver.py
-python processor_benchmark.py
-python qaoa_strong_benchmark.py
+python qaoa_solver.py
 ```
 
-Run the scripts in the order appropriate to your workflow. Some
-benchmark scripts may take several minutes because they optimize
-parameters and execute repeated shot-based simulations. Confirm each
-script's imports and CLI behavior in your local environment before using
-these commands in a final demo.
+For notebook-based exploration, install Jupyter and open `GraphCutQ_walkthrough.ipynb`:
 
-## Metrics explained
+```bash
+python -m pip install notebook
+jupyter notebook
+```
 
--   **Cut weight:** sum of the weights of edges whose endpoints receive
-    different bit values.
--   **Exact optimum:** the maximum cut weight found by exhaustive
-    classical enumeration.
--   **Approximation ratio:** expected or observed cut weight divided by
-    the exact optimum. State which cut-weight statistic is used whenever
-    reporting this ratio.
--   **Optimal-bitstring frequency:** fraction of measured shots that
-    produce an optimal assignment. For Max-Cut, complementary bitstrings
-    represent the same partition.
--   **CX count and circuit depth:** compiled resource indicators used to
-    compare architecture costs.
--   **Noisy--ideal gap:** difference between ideal and noisy mean cut
-    weight under the same frozen parameters and evaluation protocol.
+### 5. Run additional experiments
 
-## Important limitations
+Run scripts individually when you want to regenerate their associated results:
 
-1.  **Official instance check:** the graph currently used in the scripts
-    is a development instance. Before submission, replace or confirm it
-    against the organizer-approved instance and use the same graph for
-    every required architecture comparison.
-2.  **Processor A feasibility:** a six-qubit logical instance does not
-    fit directly on a five-qubit Processor A. Document this constraint
-    and implement an approved reduction or clearly scope A as a capacity
-    reference.
-3.  The Processor B and custom Processor D benchmark comparisons have been implemented and documented. Results are based on simulated execution under the configured noise model; Processor D represents a proposed architecture, not physical quantum hardware.
-4.  **Conflicting architecture documents:** the supplied challenge
-    materials appear to describe Processor A differently in different
-    versions. Confirm the authoritative topology with the organizers; do
-    not mix topologies in the final report.
-5.  **Reproducibility:** preserve package versions, seeds, parameters,
-    and the exact commands used. Rerun the final results from a clean
-    environment before submission.
-6.  **No quantum-advantage claim:** this is a small, classically
-    tractable benchmark intended to study QAOA behavior and
-    hardware-resource trade-offs.
+```bash
+python qaoa_validation.py
+python qaoa_depth_benchmark.py
+python processor_benchmark.py
+python processor_d_benchmark.py
+python processor_noise_comparison.py
+python noise_benchmark.py
+python noise_sensitivity.py
+```
 
-## Before submission
+Some experiments may take longer because they run multiple seeds, shots, or parameter settings. A run may regenerate or overwrite output files; preserve results you need before rerunning it.
 
--   [ ] Confirm the official graph, edge weights, processor topologies,
-    and scoring criteria.
--   [ ] Keep one approved graph fixed across Processor A, B, and D
-    comparisons.
--   [ ] Include a graph visualization with edge weights and Processor
-    A/B/D coupling diagrams.
--   [ ] Provide the requested notebook, QUBO / cost-Hamiltonian
-    formulation, and QAOA circuit.
--   [ ] Report the exact classical optimum, best quantum cut,
-    approximation ratio, and optimal-bitstring probability.
--   [ ] Report CX count, depth, and routing / SWAP overhead for each
-    feasible architecture.
--   [ ] Add plots for solution quality versus depth/noise and
-    architecture resource costs.
--   [ ] Verify that a clean install can run the chosen demo end-to-end.
--   [ ] Attach a concise technical report describing methods, results,
-    limitations, and the Processor D proposal/design.
--   [ ] Check every claim and number against freshly generated output
-    files.
+## Reproducibility
 
-## Why GraphCut-Q?
+- Use the same graph instance for all architecture comparisons.
+- Record QAOA depth, optimizer settings, initial parameters, random seeds, and shots.
+- Keep ideal and noisy results separate.
+- State whether circuit depth includes measurement operations.
+- Report transpiled two-qubit gate counts and routing overhead using consistent definitions.
+- Treat finite-shot probabilities and means as estimates.
+- Use benchmark scripts and saved CSV/JSON artifacts to trace results to their experiment.
 
-GraphCut-Q is designed to tell a complete experimental story:
-**establish the truth classically, optimize variationally, compile
-against real architectural constraints, then test the result under
-noise.** The goal is not to make the circuit look impressive on
-paper---it is to quantify what is gained, what it costs, and where the
-hardware changes the answer.
+Results may vary if seeds, software versions, optimizer settings, or compilation options change.
 
-------------------------------------------------------------------------
+## Limitations
 
-## Contributors
+- The graph is small enough for exact classical enumeration. This supports validation but does not demonstrate a quantum speedup.
+- QAOA performance depends on depth, parameter optimization, and sampling variance.
+- Noisy simulations model selected error channels; they are not a substitute for calibration data or physical-device execution.
+- Processor D is a hypothetical connectivity design evaluated in simulation.
+- Results depend on the graph, circuit, transpiler configuration, and noise assumptions.
 
-- **Krrish Raj Kannojia** — Project implementation, QAOA and classical solver, benchmarking, and integration.
-- **Siddhi Kapoor** — [Describe her actual contribution, such as research, testing, documentation, or presentation preparation.]
+## Team
 
-Built collaboratively for the Qiskit Fall Fest 2026 Quantum Optimization challenge.
+- **Krrish Raj Kannojia** — project implementation, QAOA and classical-solver integration, benchmarking, and experimental analysis.
+- **Siddhi Kapoor** — project collaboration and contributions as reflected in the repository history.
 
-*Status: research prototype / benchmark suite. Verify the official
-challenge instance and complete the submission checklist before treating
-this README as final.*
+## Acknowledgements
+
+Built for the Qiskit Fall Fest 2026 quantum optimization track. The project uses Python and Qiskit to study QAOA, weighted Max-Cut, circuit compilation, and noise-aware evaluation.
+
+---
+
+**Repository:** https://github.com/KRR15H/GraphCut-Q
