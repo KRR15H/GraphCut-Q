@@ -98,6 +98,10 @@ r=\frac{\text{QAOA expected cut weight}}{\text{exact optimal cut weight}}
 =\frac{16.9644}{27}\approx 0.6283.
 \]
 
+**Approximation Ratio = QAOA Expected Cut Weight / Exact Optimal Cut Weight**
+
+= 16.9644 / 27 ≈ 0.6283 (62.83%).
+
 This is an expected-value metric, not a claim that every sampled bitstring achieves that weight. The run also observed an optimal bitstring, but the probability of sampling an optimum depends on the full output distribution and shot count.
 
 ## 5. Circuit Depth Study
